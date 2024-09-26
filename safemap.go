@@ -214,3 +214,19 @@ func (sm *SafeMap[V]) ExpiredAndGet(key string) (V, bool) {
 	shard.mu.RUnlock()
 	return value, true
 }
+
+func (sm *SafeMap[V]) Range(f func(key, value interface{}) bool) {
+	for _, shard := range sm.shards {
+		shard.mu.RLock()
+		for k, entry := range shard.m {
+			if entry.expireTime != nil && time.Now().After(*entry.expireTime) {
+				continue
+			}
+			if !f(k, entry.value) {
+				shard.mu.RUnlock()
+				return
+			}
+		}
+		shard.mu.RUnlock()
+	}
+}

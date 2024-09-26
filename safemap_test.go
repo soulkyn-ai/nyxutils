@@ -257,3 +257,40 @@ func TestSafeMapExpiredAndGetConcurrent(t *testing.T) {
 		t.Errorf("Expected all keys to have expired")
 	}
 }
+func TestSafeMapRange(t *testing.T) {
+	sm := NewSafeMap[int]()
+
+	// Set some key-value pairs
+	sm.Set("key1", 1)
+	sm.Set("key2", 2)
+	sm.Set("key3", 3)
+
+	// Use Range to iterate over the map and collect the keys and values
+	collected := make(map[string]int)
+	sm.Range(func(key, value interface{}) bool {
+		k, ok := key.(string)
+		if !ok {
+			t.Errorf("Expected key to be string, got %T", key)
+			return false
+		}
+		v, ok := value.(int)
+		if !ok {
+			t.Errorf("Expected value to be int, got %T", value)
+			return false
+		}
+		collected[k] = v
+		return true // Continue iteration
+	})
+
+	// Verify that all entries are collected
+	if len(collected) != 3 {
+		t.Errorf("Expected to collect 3 entries, got %d", len(collected))
+	}
+	for i := 1; i <= 3; i++ {
+		key := "key" + strconv.Itoa(i)
+		value, exists := collected[key]
+		if !exists || value != i {
+			t.Errorf("Expected collected[%s] to be %d, got %v", key, i, value)
+		}
+	}
+}
