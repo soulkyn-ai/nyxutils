@@ -84,7 +84,7 @@ func (m *CronManager) AddCron(name string, job Job, interval time.Duration, runI
 	}
 
 	heap.Push(&m.jobHeap, cronJob)
-	m.logger.Info().Msgf("[cron|%s|%s] Added as job", name, interval)
+	m.logger.Debug().Msgf("[cron|%s|%s] Added as job", name, interval)
 
 	// Signal to the dispatcher that a new job is available.
 	if m.running {
@@ -109,7 +109,7 @@ func (m *CronManager) runJob(cronJob *CronJob) {
 
 	select {
 	case <-done:
-		m.logger.Info().Msgf("[cron|%s|%s] completed", cronJob.Name, cronJob.Interval)
+		m.logger.Debug().Msgf("[cron|%s|%s] completed", cronJob.Name, cronJob.Interval)
 	case <-time.After(cronJob.Interval):
 		m.logger.Error().Msgf("[cron|%s|%s] timed out", cronJob.Name, cronJob.Interval)
 	}
