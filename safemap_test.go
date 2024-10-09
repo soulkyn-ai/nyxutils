@@ -267,18 +267,8 @@ func TestSafeMapRange(t *testing.T) {
 
 	// Use Range to iterate over the map and collect the keys and values
 	collected := make(map[string]int)
-	sm.Range(func(key, value interface{}) bool {
-		k, ok := key.(string)
-		if !ok {
-			t.Errorf("Expected key to be string, got %T", key)
-			return false
-		}
-		v, ok := value.(int)
-		if !ok {
-			t.Errorf("Expected value to be int, got %T", value)
-			return false
-		}
-		collected[k] = v
+	sm.Range(func(key string, value int) bool {
+		collected[key] = value
 		return true // Continue iteration
 	})
 
