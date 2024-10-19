@@ -22,7 +22,7 @@ type mapShard[V any] struct {
 	mu       sync.Mutex
 	readOnly atomic.Value // Stores readOnlyMap[V]
 	dirty    map[string]*mapEntry[V]
-	misses   int
+	misses   atomic.Int64
 }
 
 type SafeMap[V any] struct {
@@ -164,8 +164,9 @@ func (s *mapShard[V]) store(key string, value V, expireTime int64) {
 	s.mu.Lock()
 	if s.dirty == nil {
 		s.dirtyLocked()
-		readOnly.amended = true
-		s.readOnly.Store(readOnly)
+		readOnly := s.readOnly.Load().(readOnlyMap[V])
+		newReadOnly := readOnlyMap[V]{m: readOnly.m, amended: true}
+		s.readOnly.Store(newReadOnly)
 	}
 	if entry, ok := s.dirty[key]; ok {
 		entry.value.Store(value)
@@ -180,8 +181,8 @@ func (s *mapShard[V]) store(key string, value V, expireTime int64) {
 }
 
 func (s *mapShard[V]) miss() {
-	s.misses++
-	if s.misses > len(s.readOnly.Load().(readOnlyMap[V]).m)/2 {
+	s.misses.Add(1)
+	if s.misses.Load() > int64(len(s.readOnly.Load().(readOnlyMap[V]).m)/2) {
 		s.mu.Lock()
 		s.promoteLocked()
 		s.mu.Unlock()
@@ -189,8 +190,8 @@ func (s *mapShard[V]) miss() {
 }
 
 func (s *mapShard[V]) missLocked() {
-	s.misses++
-	if s.misses > len(s.readOnly.Load().(readOnlyMap[V]).m)/2 {
+	s.misses.Add(1)
+	if s.misses.Load() > int64(len(s.readOnly.Load().(readOnlyMap[V]).m)/2) {
 		s.promoteLocked()
 	}
 }
@@ -199,7 +200,7 @@ func (s *mapShard[V]) promoteLocked() {
 	if s.dirty != nil {
 		s.readOnly.Store(readOnlyMap[V]{m: s.dirty})
 		s.dirty = nil
-		s.misses = 0
+		s.misses.Store(0)
 	}
 }
 
@@ -232,12 +233,12 @@ func (s *mapShard[V]) deleteExpiredLocked(key string) {
 	if s.dirty == nil {
 		s.dirtyLocked()
 		readOnly := s.readOnly.Load().(readOnlyMap[V])
-		readOnly.amended = true
-		s.readOnly.Store(readOnly)
+		newReadOnly := readOnlyMap[V]{m: readOnly.m, amended: true}
+		s.readOnly.Store(newReadOnly)
 	}
 	delete(s.dirty, key)
 	// Force promotion
-	s.misses = len(s.readOnly.Load().(readOnlyMap[V]).m) + 1
+	s.misses.Store(int64(len(s.readOnly.Load().(readOnlyMap[V]).m) + 1))
 	s.promoteLocked()
 }
 
@@ -284,8 +285,9 @@ func (s *mapShard[V]) delete(key string) {
 	s.mu.Lock()
 	if s.dirty == nil {
 		s.dirtyLocked()
-		readOnly.amended = true
-		s.readOnly.Store(readOnly)
+		readOnly := s.readOnly.Load().(readOnlyMap[V])
+		newReadOnly := readOnlyMap[V]{m: readOnly.m, amended: true}
+		s.readOnly.Store(newReadOnly)
 	}
 	delete(s.dirty, key)
 	s.mu.Unlock()
@@ -336,7 +338,7 @@ func (sm *SafeMap[V]) Clear() {
 		shard.mu.Lock()
 		shard.readOnly.Store(readOnlyMap[V]{m: make(map[string]*mapEntry[V])})
 		shard.dirty = nil
-		shard.misses = 0
+		shard.misses.Store(0)
 		shard.mu.Unlock()
 	}
 }
@@ -367,8 +369,8 @@ func (sm *SafeMap[V]) DeleteAllKeysStartingWith(prefix string) {
 		readOnly := shard.readOnly.Load().(readOnlyMap[V])
 		if shard.dirty == nil {
 			shard.dirtyLocked()
-			readOnly.amended = true
-			shard.readOnly.Store(readOnly)
+			newReadOnly := readOnlyMap[V]{m: readOnly.m, amended: true}
+			shard.readOnly.Store(newReadOnly)
 		}
 		for k := range readOnly.m {
 			if strings.HasPrefix(k, prefix) {
@@ -380,7 +382,7 @@ func (sm *SafeMap[V]) DeleteAllKeysStartingWith(prefix string) {
 				delete(shard.dirty, k)
 			}
 		}
-		shard.misses = len(readOnly.m) + 1 // Force promotion
+		shard.misses.Store(int64(len(readOnly.m) + 1)) // Force promotion
 		shard.promoteLocked()
 		shard.mu.Unlock()
 	}
